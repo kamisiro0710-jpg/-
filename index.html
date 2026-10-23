@@ -1,0 +1,102 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>文化祭 進捗管理</title>
+  <style>
+    body { font-family: sans-serif; max-width: 900px; margin: auto; padding: 20px; background: #f5f7fb; color: #222; }
+    h1 { color: #2456a6; }
+    section { background: white; padding: 16px; border-radius: 12px; margin: 16px 0; box-shadow: 0 2px 8px #ddd; }
+    input, button { padding: 10px; margin: 4px 0; max-width: 100%; box-sizing: border-box; }
+    input { border: 1px solid #ccc; border-radius: 6px; }
+    button { border: 0; border-radius: 6px; background: #2456a6; color: white; cursor: pointer; }
+    li { margin: 12px 0; overflow-wrap: anywhere; }
+    .muted { color: #666; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h1>🎪 文化祭 進捗管理</h1>
+  <p class="muted">クラスのタスクをまとめる管理ページ</p>
+
+  <section>
+    <h2>タスクを追加</h2>
+    <input id="task" placeholder="タスク名（例：材料を買う）">
+    <input id="person" placeholder="担当者">
+    <input id="deadline" type="date" aria-label="期限">
+    <button onclick="addTask()">追加する</button>
+  </section>
+
+  <section>
+    <h2>タスク一覧</h2>
+    <p id="summary">完了 0 / 全体 0</p>
+    <ul id="tasks"></ul>
+  </section>
+
+  <section>
+    <h2>買い物リスト・予算</h2>
+    <input id="item" placeholder="購入するもの">
+    <input id="price" type="number" min="0" placeholder="金額（円）">
+    <button onclick="addItem()">買い物を追加</button>
+    <p id="budget">登録済み支出：0円</p>
+    <ul id="items"></ul>
+  </section>
+
+  <script>
+    let tasks = [];
+    let items = [];
+
+    function addTask() {
+      const name = document.getElementById('task').value.trim();
+      const person = document.getElementById('person').value.trim();
+      const deadline = document.getElementById('deadline').value;
+      if (!name) return alert('タスク名を入力してください');
+      tasks.push({ name, person, deadline, done: false });
+      document.getElementById('task').value = '';
+      document.getElementById('person').value = '';
+      render();
+    }
+
+    function addItem() {
+      const name = document.getElementById('item').value.trim();
+      const price = Number(document.getElementById('price').value);
+      if (!name) return alert('購入するものを入力してください');
+      items.push({ name, price });
+      document.getElementById('item').value = '';
+      document.getElementById('price').value = '';
+      render();
+    }
+
+    function render() {
+      const list = document.getElementById('tasks');
+      list.replaceChildren();
+      tasks.forEach((task, index) => {
+        const li = document.createElement('li');
+        const check = document.createElement('input');
+        check.type = 'checkbox';
+        check.checked = task.done;
+        check.onchange = () => { task.done = check.checked; render(); };
+        li.append(check, document.createTextNode(
+          ' ' + task.name + ' / 担当：' + (task.person || '未設定') +
+          ' / 期限：' + (task.deadline || '未設定')
+        ));
+        list.appendChild(li);
+      });
+      const done = tasks.filter(t => t.done).length;
+      document.getElementById('summary').textContent =
+        '完了 ' + done + ' / 全体 ' + tasks.length;
+
+      const itemList = document.getElementById('items');
+      itemList.replaceChildren();
+      items.forEach(item => {
+        const li = document.createElement('li');
+        li.textContent = item.name + '：' + item.price.toLocaleString() + '円';
+        itemList.appendChild(li);
+      });
+      document.getElementById('budget').textContent =
+        '登録済み支出：' + items.reduce((sum, item) => sum + item.price, 0).toLocaleString() + '円';
+    }
+  </script>
+</body>
+</html>
