@@ -6,97 +6,397 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>文化祭 進捗管理</title>
   <style>
-    body { font-family: sans-serif; max-width: 900px; margin: auto; padding: 20px; background: #f5f7fb; color: #222; }
+    body {
+      font-family: sans-serif;
+      max-width: 900px;
+      margin: auto;
+      padding: 20px;
+      background: #f5f7fb;
+      color: #222;
+    }
     h1 { color: #2456a6; }
-    section { background: white; padding: 16px; border-radius: 12px; margin: 16px 0; box-shadow: 0 2px 8px #ddd; }
-    input, button { padding: 10px; margin: 4px 0; max-width: 100%; box-sizing: border-box; }
-    input { border: 1px solid #ccc; border-radius: 6px; }
-    button { border: 0; border-radius: 6px; background: #2456a6; color: white; cursor: pointer; }
+    section {
+      background: white;
+      padding: 16px;
+      border-radius: 12px;
+      margin: 16px 0;
+      box-shadow: 0 2px 8px #ddd;
+    }
+    input, button {
+      padding: 10px;
+      margin: 4px 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    input {
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+    button {
+      border: 0;
+      border-radius: 6px;
+      background: #2456a6;
+      color: white;
+      cursor: pointer;
+    }
     li { margin: 12px 0; overflow-wrap: anywhere; }
     .muted { color: #666; font-size: 14px; }
+    [hidden] { display: none !important; }
+    #message { overflow-wrap: anywhere; }
   </style>
 </head>
 <body>
   <h1>🎪 文化祭 進捗管理</h1>
   <p class="muted">クラスのタスクをまとめる管理ページ</p>
 
-  <section>
-    <h2>タスクを追加</h2>
-    <input id="task" placeholder="タスク名（例：材料を買う）">
-    <input id="person" placeholder="担当者">
-    <input id="deadline" type="date" aria-label="期限">
-    <button onclick="addTask()">追加する</button>
+  <section id="loginSection">
+    <h2>ログイン</h2>
+    <p class="muted">
+      Firebaseに登録済みのアカウントでログインしてください。
+    </p>
+    <form id="loginForm">
+      <div>
+        <input id="email" type="email"
+          placeholder="メールアドレス" autocomplete="username" required>
+      </div>
+      <div>
+        <input id="password" type="password"
+          placeholder="パスワード" autocomplete="current-password" required>
+      </div>
+      <button type="submit">ログイン</button>
+    </form>
+    <p id="message" role="status"></p>
   </section>
 
-  <section>
-    <h2>タスク一覧</h2>
-    <p id="summary">完了 0 / 全体 0</p>
-    <ul id="tasks"></ul>
-  </section>
+  <div id="appSection" hidden>
+    <p>
+      ログイン中：<strong id="userEmail"></strong>
+      <button id="logoutButton" type="button">ログアウト</button>
+    </p>
+    <p class="muted" id="syncStatus">データを読み込んでいます…</p>
 
-  <section>
-    <h2>買い物リスト・予算</h2>
-    <input id="item" placeholder="購入するもの">
-    <input id="price" type="number" min="0" placeholder="金額（円）">
-    <button onclick="addItem()">買い物を追加</button>
-    <p id="budget">登録済み支出：0円</p>
-    <ul id="items"></ul>
-  </section>
+    <section>
+      <h2>タスクを追加</h2>
+      <form id="taskForm">
+        <div>
+          <input id="task" placeholder="タスク名（例：材料を買う）" required>
+        </div>
+        <div>
+          <input id="person" placeholder="担当者">
+        </div>
+        <div>
+          <label for="deadline">期限：</label>
+          <input id="deadline" type="date">
+        </div>
+        <button type="submit">追加する</button>
+      </form>
+    </section>
 
-  <script>
+    <section>
+      <h2>タスク一覧</h2>
+      <p id="summary">完了 0 / 全体 0</p>
+      <ul id="tasks"></ul>
+    </section>
+
+    <section>
+      <h2>買い物リスト・予算</h2>
+      <form id="itemForm">
+        <div>
+          <input id="item" placeholder="購入するもの" required>
+        </div>
+        <div>
+          <input id="price" type="number" min="0" step="1"
+            placeholder="金額（円）" required>
+        </div>
+        <button type="submit">買い物を追加</button>
+      </form>
+      <p id="budget">登録済み支出：0円</p>
+      <ul id="items"></ul>
+    </section>
+  </div>
+
+  <script type="module">
+    import { initializeApp }
+      from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
+    import {
+      getAuth,
+      signInWithEmailAndPassword,
+      onAuthStateChanged,
+      signOut
+    } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+    import {
+      getFirestore,
+      doc,
+      onSnapshot,
+      runTransaction
+    } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-firestore.js";
+
+    // Firebase Console の「マイアプリ」にある設定を使用
+    const firebaseConfig = {
+      apiKey: "AIzaSyDABHweTJ7-u6_adpEehcr8i5b_yKv7a7w",
+      authDomain: "bunkasai2026-3ca.firebaseapp.com",
+      projectId: "bunkasai2026-3ca",
+      storageBucket: "bunkasai2026-3ca.firebasestorage.app",
+      messagingSenderId: "965908029218",
+      appId: "1:965908029218:web:e4e45d5d0822de76400f7b"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const sharedRef = doc(db, "shared", "main");
+
+    const loginSection = document.getElementById("loginSection");
+    const appSection = document.getElementById("appSection");
+    const message = document.getElementById("message");
+    const syncStatus = document.getElementById("syncStatus");
+
     let tasks = [];
     let items = [];
+    let stopListening = null;
+    let currentUser = null;
 
-    function addTask() {
-      const name = document.getElementById('task').value.trim();
-      const person = document.getElementById('person').value.trim();
-      const deadline = document.getElementById('deadline').value;
-      if (!name) return alert('タスク名を入力してください');
-      tasks.push({ name, person, deadline, done: false });
-      document.getElementById('task').value = '';
-      document.getElementById('person').value = '';
-      render();
+    function showError(error) {
+      console.error(error);
+      const messages = {
+        "auth/invalid-credential":
+          "メールアドレスまたはパスワードを確認してください。",
+        "auth/too-many-requests":
+          "試行回数が多すぎます。時間をおいて再度お試しください。",
+        "permission-denied":
+          "データへのアクセスが拒否されました。Firestoreのルールを確認してください。",
+        "unavailable":
+          "通信できません。ネットワークを確認してください。"
+      };
+      message.textContent =
+        messages[error.code?.replace("firestore/", "")] ||
+        messages[error.code] ||
+        "エラーが発生しました。ブラウザのコンソールを確認してください。";
     }
 
-    function addItem() {
-      const name = document.getElementById('item').value.trim();
-      const price = Number(document.getElementById('price').value);
-      if (!name) return alert('購入するものを入力してください');
-      items.push({ name, price });
-      document.getElementById('item').value = '';
-      document.getElementById('price').value = '';
-      render();
+    // 最初の共有データがなければ空の一覧を作成する
+    async function ensureSharedDoc() {
+      await runTransaction(db, async (transaction) => {
+        const snapshot = await transaction.get(sharedRef);
+        if (!snapshot.exists()) {
+          transaction.set(sharedRef, { tasks: [], items: [] });
+        }
+      });
+    }
+
+    // 最新の共有データを使って更新する
+    async function updateShared(change) {
+      if (!currentUser) {
+        throw new Error("ログインしてください。");
+      }
+
+      await runTransaction(db, async (transaction) => {
+        const snapshot = await transaction.get(sharedRef);
+        const existing = snapshot.exists() ? snapshot.data() : {};
+        const data = {
+          tasks: Array.isArray(existing.tasks) ? existing.tasks : [],
+          items: Array.isArray(existing.items) ? existing.items : []
+        };
+
+        const updated = change({
+          tasks: data.tasks.map(task => ({ ...task })),
+          items: data.items.map(item => ({ ...item }))
+        });
+
+        transaction.set(sharedRef, updated);
+      });
     }
 
     function render() {
-      const list = document.getElementById('tasks');
+      const list = document.getElementById("tasks");
       list.replaceChildren();
+
       tasks.forEach((task, index) => {
-        const li = document.createElement('li');
-        const check = document.createElement('input');
-        check.type = 'checkbox';
-        check.checked = task.done;
-        check.onchange = () => { task.done = check.checked; render(); };
-        li.append(check, document.createTextNode(
-          ' ' + task.name + ' / 担当：' + (task.person || '未設定') +
-          ' / 期限：' + (task.deadline || '未設定')
-        ));
+        const li = document.createElement("li");
+        const check = document.createElement("input");
+        check.type = "checkbox";
+        check.checked = Boolean(task.done);
+        check.setAttribute("aria-label", task.name + "の完了状態");
+
+        check.addEventListener("change", async () => {
+          check.disabled = true;
+          try {
+            await updateShared(data => {
+              if (data.tasks[index]) {
+                data.tasks[index].done = check.checked;
+              }
+              return data;
+            });
+          } catch (error) {
+            showError(error);
+          } finally {
+            check.disabled = false;
+          }
+        });
+
+        li.append(
+          check,
+          document.createTextNode(
+            " " + task.name +
+            " / 担当：" + (task.person || "未設定") +
+            " / 期限：" + (task.deadline || "未設定")
+          )
+        );
         list.appendChild(li);
       });
-      const done = tasks.filter(t => t.done).length;
-      document.getElementById('summary').textContent =
-        '完了 ' + done + ' / 全体 ' + tasks.length;
 
-      const itemList = document.getElementById('items');
+      const done = tasks.filter(task => task.done).length;
+      document.getElementById("summary").textContent =
+        "完了 " + done + " / 全体 " + tasks.length;
+
+      const itemList = document.getElementById("items");
       itemList.replaceChildren();
+
       items.forEach(item => {
-        const li = document.createElement('li');
-        li.textContent = item.name + '：' + item.price.toLocaleString() + '円';
+        const li = document.createElement("li");
+        li.textContent =
+          item.name + "：" + Number(item.price).toLocaleString() + "円";
         itemList.appendChild(li);
       });
-      document.getElementById('budget').textContent =
-        '登録済み支出：' + items.reduce((sum, item) => sum + item.price, 0).toLocaleString() + '円';
+
+      document.getElementById("budget").textContent =
+        "登録済み支出：" +
+        items.reduce((sum, item) => sum + Number(item.price), 0)
+          .toLocaleString() + "円";
     }
+
+    document.getElementById("loginForm").addEventListener("submit",
+      async (event) => {
+        event.preventDefault();
+        message.textContent = "ログインしています…";
+
+        try {
+          await signInWithEmailAndPassword(
+            auth,
+            document.getElementById("email").value.trim(),
+            document.getElementById("password").value
+          );
+          message.textContent = "";
+          document.getElementById("password").value = "";
+        } catch (error) {
+          showError(error);
+        }
+      }
+    );
+
+    document.getElementById("logoutButton").addEventListener("click",
+      async () => {
+        try {
+          await signOut(auth);
+        } catch (error) {
+          showError(error);
+        }
+      }
+    );
+
+    document.getElementById("taskForm").addEventListener("submit",
+      async (event) => {
+        event.preventDefault();
+
+        const name = document.getElementById("task").value.trim();
+        const person = document.getElementById("person").value.trim();
+        const deadline = document.getElementById("deadline").value;
+        if (!name) return;
+
+        try {
+          await updateShared(data => {
+            data.tasks.push({
+              name, person, deadline, done: false,
+              createdBy: currentUser.uid
+            });
+            return data;
+          });
+          document.getElementById("task").value = "";
+          document.getElementById("person").value = "";
+          document.getElementById("deadline").value = "";
+          message.textContent = "";
+        } catch (error) {
+          showError(error);
+        }
+      }
+    );
+
+    document.getElementById("itemForm").addEventListener("submit",
+      async (event) => {
+        event.preventDefault();
+
+        const name = document.getElementById("item").value.trim();
+        const rawPrice = document.getElementById("price").value;
+        const price = Number(rawPrice);
+
+        if (!name || rawPrice === "" || !Number.isFinite(price) ||
+            price < 0 || !Number.isInteger(price)) {
+          message.textContent = "購入するものと、0円以上の整数の金額を入力してください。";
+          return;
+        }
+
+        try {
+          await updateShared(data => {
+            data.items.push({
+              name, price, createdBy: currentUser.uid
+            });
+            return data;
+          });
+          document.getElementById("item").value = "";
+          document.getElementById("price").value = "";
+          message.textContent = "";
+        } catch (error) {
+          showError(error);
+        }
+      }
+    );
+
+    onAuthStateChanged(auth, async (user) => {
+      currentUser = user;
+      if (stopListening) {
+        stopListening();
+        stopListening = null;
+      }
+
+      loginSection.hidden = Boolean(user);
+      appSection.hidden = !user;
+      message.textContent = "";
+
+      if (!user) {
+        tasks = [];
+        items = [];
+        render();
+        syncStatus.textContent = "";
+        return;
+      }
+
+      document.getElementById("userEmail").textContent = user.email || "";
+      syncStatus.textContent = "共有データに接続しています…";
+
+      try {
+        await ensureSharedDoc();
+        if (currentUser?.uid !== user.uid) return;
+
+        stopListening = onSnapshot(sharedRef, snapshot => {
+          if (!snapshot.exists()) {
+            tasks = [];
+            items = [];
+          } else {
+            const data = snapshot.data();
+            tasks = Array.isArray(data.tasks) ? data.tasks : [];
+            items = Array.isArray(data.items) ? data.items : [];
+          }
+          render();
+          syncStatus.textContent = "同期中";
+        }, error => {
+          showError(error);
+          syncStatus.textContent = "同期エラー";
+        });
+      } catch (error) {
+        showError(error);
+        syncStatus.textContent = "接続できません";
+      }
+    });
   </script>
 </body>
 </html>
